@@ -21,7 +21,7 @@ client_live = Client(live_api_key, live_api_secret)
 SYMBOL = "SUIUSDT"
 TIMEFRAME = "5m" 
 LEVERAGE = 15
-RISK_AMOUNT = 1.5  # Rủi ro cố định mỗi giao dịch (1R)
+RISK_AMOUNT = 2  # Rủi ro cố định mỗi giao dịch (1R)
 RR_RATIO = 3
 
 client_live.futures_change_leverage(symbol=SYMBOL, leverage=LEVERAGE)
@@ -116,6 +116,10 @@ restart_websocket()
 # Khởi tạo DataFrame với dữ liệu lịch sử
 df_candles = get_historical_data(SYMBOL, TIMEFRAME) 
 
+
+
+
+
 def check_signal(df_candles):
     print("🔍 Đang kiểm tra tín hiệu...")
     if len(df_candles) < 90:
@@ -132,9 +136,8 @@ def check_signal(df_candles):
         print("✅ Xác nhận Engulfing tăng!")
         entry = last_candle['close']
         stop_loss = min(prev_candle['low'], last_candle['low'])
-
         distance = entry - stop_loss
-        min_distance = entry * 0.005  # 0.5% của entry
+        min_distance = entry * 0.007  # 0.5% của entry
         max_distance = entry * 0.01   # 1% của entry
 
         if distance < min_distance:
@@ -145,6 +148,11 @@ def check_signal(df_candles):
             stop_loss = min(prev_candle['low'], last_candle['low'])
 
         take_profit = entry + ((entry - stop_loss) * RR_RATIO)
+
+        if abs(entry - stop_loss) < min_distance:
+            print("⚠️ SL quá gần giá Entry, cần điều chỉnh lại!")
+            return None, None, None, None
+        
         return "BUY", entry, stop_loss, take_profit
     
     elif prev_candle['close'] > prev_candle['open'] and last_candle['close'] < last_candle['open'] and last_candle['close'] < prev_candle['low'] and last_candle['close'] < ma89:
@@ -153,7 +161,7 @@ def check_signal(df_candles):
         stop_loss = max(prev_candle['high'], last_candle['high'])
 
         distance = stop_loss - entry
-        min_distance = entry * 0.005  # 0.5% của entry
+        min_distance = entry * 0.007  # 0.5% của entry
         max_distance = entry * 0.01   # 1% của entry
 
         if distance < min_distance:
@@ -163,6 +171,12 @@ def check_signal(df_candles):
         else:
             stop_loss = max(prev_candle['high'], last_candle['high'])
         take_profit = entry - ((stop_loss - entry) * RR_RATIO)
+
+    # Kiểm tra khoảng cách SL có hợp lệ không
+        if abs(stop_loss - entry) < min_distance:
+            print("⚠️ SL quá gần giá Entry, cần điều chỉnh lại!")
+            return None, None, None, None
+
         return "SELL", entry, stop_loss, take_profit
     print("⚠️ Không có tín hiệu giao dịch!")
     return None, None, None, None
@@ -229,15 +243,15 @@ def place_order(order_type, entry, stop_loss, take_profit):
         return
 
      # Kiểm tra nếu đã có lệnh Limit đang chờ khớp
-    try:
-        # 🛑 Kiểm tra nếu đã có lệnh Limit tại cùng mức giá
-        open_orders = client_live.futures_get_open_orders(symbol=SYMBOL)
-        if any(float(o["price"]) == round(entry, 4) and o["side"] == side for o in open_orders):
-            print(f"⚠️ Đã có lệnh Limit {side} tại {entry}, không đặt lệnh mới!")
-            return
-    except Exception as e:
-        print(f"⚠️ Lỗi kiểm tra lệnh mở: {e}")
-        return
+    # try:
+    #     # 🛑 Kiểm tra nếu đã có lệnh Limit tại cùng mức giá
+    #     open_orders = client_live.futures_get_open_orders(symbol=SYMBOL)
+    #     if any(float(o["price"]) == round(entry, 4) and o["side"] == side for o in open_orders):
+    #         print(f"⚠️ Đã có lệnh Limit {side} tại {entry}, không đặt lệnh mới!")
+    #         return
+    # except Exception as e:
+    #     print(f"⚠️ Lỗi kiểm tra lệnh mở: {e}")
+    #     return
     
 
     # Hủy lệnh limit cũ trước khi đặt lệnh mới
