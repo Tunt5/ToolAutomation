@@ -1,0 +1,30 @@
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Bot Control</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+        button { font-size: 20px; padding: 10px 20px; margin: 10px; }
+        #status { font-size: 18px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Trading Bot Control Panel</h1>
+    <button id="playPauseBtn" onclick="toggleBot()">▶️ Start Bot</button>
+    <p id="status">Status: Stopped</p>
+
+    <script>
+        let isRunning = false;
+        function toggleBot() {
+            isRunning = !isRunning;
+            fetch(isRunning ? '/start' : '/stop', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById("status").innerText = "Status: " + data.status;
+                    document.getElementById("playPauseBtn").innerText = isRunning ? "⏸ Pause Bot" : "▶️ Start Bot";
+                })
+                .catch(error => console.error("Error:", error));
+        }
+    </script>
+</body>
+</html>
