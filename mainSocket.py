@@ -8,6 +8,7 @@ import numpy as np
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 
+
 # futures_balance = client_live.futures_account_balance()
 # usdt_balance = next(item for item in futures_balance if item["asset"] == "USDT")
 # print("Số dư USDT Futures:", usdt_balance)
@@ -21,8 +22,8 @@ client_live = Client(live_api_key, live_api_secret)
 SYMBOL = "SUIUSDT"
 TIMEFRAME = "5m" 
 LEVERAGE = 15
-RISK_AMOUNT = 2  # Rủi ro cố định mỗi giao dịch (1R)
-RR_RATIO = 3
+RISK_AMOUNT = 3  # Rủi ro cố định mỗi giao dịch (1R)
+RR_RATIO = 2
 
 client_live.futures_change_leverage(symbol=SYMBOL, leverage=LEVERAGE)
 
@@ -45,7 +46,7 @@ def get_historical_data(symbol, interval, limit=90):
     df = pd.DataFrame(data, columns=["time", "open", "high", "low", "close", "volume", "_", "_", "_", "_", "_", "_"])
     df = df[["time", "open", "high", "low", "close", "volume"]].astype(float)
     df["time"] = pd.to_datetime(df["time"], unit="ms")
-    df["MA89"] = df["close"].rolling(window=89).mean()
+    df["MA50"] = df["close"].rolling(window=50).mean()
     return df
 
 def on_message(ws, message):
@@ -67,7 +68,7 @@ def on_message(ws, message):
 
         new_candle_df = pd.DataFrame([new_candle])
         df_candles = pd.concat([df_candles, new_candle_df]).tail(100).reset_index(drop=True)
-        df_candles["MA89"] = df_candles["close"].rolling(window=89).mean()
+        df_candles["MA50"] = df_candles["close"].rolling(window=50).mean()
         
         signal = check_signal()
         if signal[0]:
@@ -117,36 +118,72 @@ restart_websocket()
 df_candles = get_historical_data(SYMBOL, TIMEFRAME) 
 
 
+def is_bullish_pinbar(prev_candle):
+    """Kiểm tra nếu prev_candle là Bullish Pin Bar (không yêu cầu nến xanh)."""
+    body = abs(prev_candle['close'] - prev_candle['open'])
+    prev_candle_range = prev_candle['high'] - prev_candle['low']
+    upper_wick = prev_candle['high'] - max(prev_candle['close'], prev_candle['open'])  # Râu trên
+    body_ratio = body / prev_candle_range
+    upper_wick_ratio = upper_wick / prev_candle_range
+
+    return (body_ratio < 0.35 and  # ✅ Thân nến < 35% tổng biên độ nến
+            upper_wick_ratio < 0.15)  # ✅ Râu trên < 10% tổng biên độ nến
+
+def confirm_bullish_setup(prev_candle, last_candle):
+    """Xác nhận mô hình Bullish Pin Bar + nến xanh xác nhận."""
+    if(is_bullish_pinbar(prev_candle) and 
+            last_candle['close'] > last_candle['open'] and  # ✅ Nến xác nhận phải là nến xanh
+            last_candle['close'] >= prev_candle['high']  # ✅ Giá đóng cửa cao hơn đỉnh Pin Bar
+        
+           ) :
+        print(f"📌 Thấy Pin Bar BUY ") 
+        return True  
+    
 
 
+def is_bearish_pinbar(prev_candle):
+    """Kiểm tra nếu prev_candle là Bearish Pin Bar (không yêu cầu nến đỏ)."""
+    body = abs(prev_candle['close'] - prev_candle['open'])
+    prev_candle_range = prev_candle['high'] - prev_candle['low']
+    lower_wick = min(prev_candle['open'], prev_candle['close']) - prev_candle['low']  # Râu dưới
+    body_ratio = body / prev_candle_range
+    lower_wick_ratio = lower_wick / prev_candle_range
+
+    return (body_ratio < 0.35 and  # ✅ Thân nến < 30% tổng biên độ nến
+            lower_wick_ratio < 0.15)  # ✅ Râu dưới < 10% tổng biên độ nến
+
+def confirm_bearish_setup(prev_candle, last_candle):
+    """Xác nhận mô hình Bearish Pin Bar + nến đỏ xác nhận."""
+    if (is_bearish_pinbar(prev_candle) and 
+            last_candle['close'] < last_candle['open'] and  # ✅ Nến xác nhận phải là nến đỏ
+            last_candle['close'] <= prev_candle['low'] ):  # ✅ Giá đóng cửa thấp hơn đáy của Pin Bar
+        print(f"📌 Thấy Pin Bar SELL ")
+        return True
+    
 
 def check_signal(df_candles):
-    print("🔍 Đang kiểm tra tín hiệu...")
+    print("🔍 Đang mò đây...")
     if len(df_candles) < 90:
-        print("⚠️ Không đủ dữ liệu MA89!")
+        print("⚠️ Không đủ dữ liệu MA50!")
         return None, None, None, None
     last_candle = df_candles.iloc[-2]
     prev_candle = df_candles.iloc[-3]
-    ma89 = round(last_candle['MA89'], 4)
-    if pd.isna(ma89):
-        print("⚠️ MA89 chưa tính toán xong!")
+    ma50 = round(last_candle['MA50'], 4)
+    if pd.isna(ma50):
+        print("⚠️ MA50 chưa tính toán xong!")
         return None, None, None, None
 
-    if prev_candle['close'] < prev_candle['open'] and last_candle['close'] > last_candle['open'] and last_candle['close'] > prev_candle['high'] and last_candle['close'] > ma89:
-        print("✅ Xác nhận Engulfing tăng!")
+    if confirm_bullish_setup(prev_candle, last_candle) and last_candle['close'] > ma50 :
+        print("✅ Xác nhận tính hiệu MUA")
         entry = last_candle['close']
-        stop_loss = min(prev_candle['low'], last_candle['low'])
+        stop_loss = prev_candle['low']
         distance = entry - stop_loss
-        min_distance = entry * 0.007  # 0.5% của entry
-        max_distance = entry * 0.01   # 1% của entry
+        min_distance = entry * 0.005  # 0.5% của entry
 
         if distance < min_distance:
             stop_loss = entry - min_distance
-        elif distance > max_distance:
-            stop_loss = entry - max_distance
         else:
-            stop_loss = min(prev_candle['low'], last_candle['low'])
-
+            stop_loss = prev_candle['low']
         take_profit = entry + ((entry - stop_loss) * RR_RATIO)
 
         if abs(entry - stop_loss) < min_distance:
@@ -155,19 +192,15 @@ def check_signal(df_candles):
         
         return "BUY", entry, stop_loss, take_profit
     
-    elif prev_candle['close'] > prev_candle['open'] and last_candle['close'] < last_candle['open'] and last_candle['close'] < prev_candle['low'] and last_candle['close'] < ma89:
-        print("✅ Xác nhận Engulfing giảm!")
+    elif confirm_bearish_setup(prev_candle, last_candle) and last_candle['close'] < ma50:
+        print("✅ Xác nhận tính hiệu BÁN")
         entry = last_candle['close']
         stop_loss = max(prev_candle['high'], last_candle['high'])
-
         distance = stop_loss - entry
-        min_distance = entry * 0.007  # 0.5% của entry
-        max_distance = entry * 0.01   # 1% của entry
+        min_distance = entry * 0.005  # 0.5% của entry
 
         if distance < min_distance:
             stop_loss = entry + min_distance
-        elif distance > max_distance:
-            stop_loss = entry + max_distance
         else:
             stop_loss = max(prev_candle['high'], last_candle['high'])
         take_profit = entry - ((stop_loss - entry) * RR_RATIO)
@@ -268,8 +301,8 @@ def place_order(order_type, entry, stop_loss, take_profit):
             price=round(entry, 4)
         )
         order_id = order["orderId"]
-        print(f"🟢 Đặt Limit Order {side} tại {entry} với số lượng: {quantity}")
-    
+        print(f"🟢 Đặt Limit Order {side} với số lượng: {quantity}")
+        print(f"🟢  entry:  {entry} , Sl: {stop_loss} , Tp: {take_profit}")
 
         if wait_for_order_fill(order_id):
             # Kiểm tra lại vị thế sau khi lệnh mới khớp
