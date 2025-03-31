@@ -19,9 +19,9 @@ live_api_secret = 'S3DMpl3SuP4WI5JTODs1p1u5NOiATOmdELcgrNt8fggDqSXnrS1ibFBEZlyqu
 client_live = Client(live_api_key, live_api_secret)
 
 # 🔹 Cấu hình giao dịch
-SYMBOL = "SUIUSDT"
+SYMBOL = "ADAUSDT"
 TIMEFRAME = "5m" 
-LEVERAGE = 15
+LEVERAGE = 20
 RISK_AMOUNT = 3  # Rủi ro cố định mỗi giao dịch (1R)
 RR_RATIO = 2
 
@@ -157,7 +157,6 @@ def confirm_bearish_setup(prev_candle, last_candle):
     if (is_bearish_pinbar(prev_candle) and 
             last_candle['close'] < last_candle['open'] and  # ✅ Nến xác nhận phải là nến đỏ
             last_candle['close'] <= prev_candle['low'] ):  # ✅ Giá đóng cửa thấp hơn đáy của Pin Bar
-        print(f"📌 Thấy Pin Bar SELL ")
         return True
     
 
