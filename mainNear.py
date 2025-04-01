@@ -23,12 +23,11 @@ SYMBOL = "NEARUSDT"
 TIMEFRAME = "5m" 
 LEVERAGE = 20
 RISK_AMOUNT = 3  # Rủi ro cố định mỗi giao dịch (1R)
-RR_RATIO = 2
+RR_RATIO = 2.2
 
 client_live.futures_change_leverage(symbol=SYMBOL, leverage=LEVERAGE)
 
 # 🛠 Các hằng số lệnh
-
 
 
 ORDER_TYPE_LIMIT = "LIMIT"
@@ -157,7 +156,7 @@ def confirm_bearish_setup(prev_candle, last_candle):
     if (is_bearish_pinbar(prev_candle) and 
             last_candle['close'] < last_candle['open'] and  # ✅ Nến xác nhận phải là nến đỏ
             last_candle['close'] <= prev_candle['low'] ):  # ✅ Giá đóng cửa thấp hơn đáy của Pin Bar
-
+        print(f"📌 Thấy Pin Bar SELL ")
         return True
     
 
@@ -175,7 +174,7 @@ def check_signal(df_candles):
 
     if confirm_bullish_setup(prev_candle, last_candle) and last_candle['close'] > ma50 :
         print("✅ Xác nhận tính hiệu MUA")
-        entry = last_candle['close']
+        entry =  last_candle['close'] - ((last_candle['close'] - prev_candle['low']) * .15)
         stop_loss = prev_candle['low']
         distance = entry - stop_loss
         min_distance = entry * 0.005  # 0.5% của entry
@@ -186,16 +185,16 @@ def check_signal(df_candles):
             stop_loss = prev_candle['low']
         take_profit = entry + ((entry - stop_loss) * RR_RATIO)
 
-        if abs(entry - stop_loss) < min_distance:
-            print("⚠️ SL quá gần giá Entry, cần điều chỉnh lại!")
-            return None, None, None, None
+        # if abs(entry - stop_loss) < min_distance:
+        #     print("⚠️ SL quá gần giá Entry, cần điều chỉnh lại!")
+        #     return None, None, None, None
         
         return "BUY", entry, stop_loss, take_profit
     
     elif confirm_bearish_setup(prev_candle, last_candle) and last_candle['close'] < ma50:
         print("✅ Xác nhận tính hiệu BÁN")
-        entry = last_candle['close']
-        stop_loss = max(prev_candle['high'], last_candle['high'])
+        entry = last_candle['close'] + ((prev_candle['high'] - last_candle['close']) * 0.15)
+        stop_loss = prev_candle['high']
         distance = stop_loss - entry
         min_distance = entry * 0.005  # 0.5% của entry
 
@@ -205,10 +204,10 @@ def check_signal(df_candles):
             stop_loss = max(prev_candle['high'], last_candle['high'])
         take_profit = entry - ((stop_loss - entry) * RR_RATIO)
 
-    # Kiểm tra khoảng cách SL có hợp lệ không
-        if abs(stop_loss - entry) < min_distance:
-            print("⚠️ SL quá gần giá Entry, cần điều chỉnh lại!")
-            return None, None, None, None
+    # # Kiểm tra khoảng cách SL có hợp lệ không
+    #     if abs(stop_loss - entry) < min_distance:
+    #         print("⚠️ SL quá gần giá Entry, cần điều chỉnh lại!")
+    #         return None, None, None, None
 
         return "SELL", entry, stop_loss, take_profit
     print("⚠️ Không có tín hiệu giao dịch!")
